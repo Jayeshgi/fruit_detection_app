@@ -1,0 +1,29 @@
+# ─── Python ───────────────────────────────────────
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# ─── Dataset (too large for Git, re-download with download_dataset.py) ────
+model/data/
+
+# ─── Trained Model ────────────────────────────────
+# model/saved_models/*.pth  (included for deployment, 14 MB is fine for Git)
+
+# ─── Node.js ──────────────────────────────────────
+node_modules/
+dist/
+
+# ─── Environment / Secrets ────────────────────────
+.env
+.env.local
+
+# ─── OS Files ─────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── IDE ──────────────────────────────────────────
+.vscode/
+.idea/
