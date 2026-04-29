@@ -305,15 +305,36 @@
   background-clip: text;
 }
 
-.prediction__confidence {
-  font-size: 1rem;
-  color: var(--clr-text-secondary);
-  margin-bottom: var(--space-lg);
+.prediction__refined-badge {
+  display: inline-flex;
+  align-items: center;
+  background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+  color: white;
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--radius-full);
+  font-size: 0.65rem;
+  font-weight: 700;
+  margin-bottom: var(--space-md);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  animation: fadeIn 0.5s ease;
 }
 
-.prediction__confidence-value {
-  font-weight: 700;
-  color: var(--clr-accent);
+.prediction__confidence {
+  font-size: 0.95rem;
+  color: var(--clr-text-secondary);
+  margin-bottom: var(--space-lg);
+  font-weight: 500;
+}
+
+.top-predictions__label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--clr-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--space-xs);
 }
 
 /* Top 5 Predictions */

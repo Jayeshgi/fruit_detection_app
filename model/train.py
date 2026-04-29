@@ -29,39 +29,42 @@ from dataset import get_dataloaders
 from fruit_model import create_model
 
 
-def train_one_epoch(model, train_loader, criterion, optimizer, device):
-    """Train for one epoch and return average loss and accuracy."""
+def train_one_epoch(model, dataloader, criterion, optimizer, device):
+    """Train the model for one epoch using Mixed Precision (AMP) for speed."""
     model.train()
     running_loss = 0.0
     correct = 0
     total = 0
 
-    progress_bar = tqdm(train_loader, desc="  Training", leave=False)
+    # Initialize GradScaler for Mixed Precision
+    scaler = torch.amp.GradScaler('cuda')
+
+    progress_bar = tqdm(dataloader, desc="  Training", leave=False)
     for images, labels in progress_bar:
         images, labels = images.to(device), labels.to(device)
 
-        # Forward pass
-        outputs = model(images)
-        loss = criterion(outputs, labels)
-
-        # Backward pass
         optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
 
-        # Track metrics
+        # Runs the forward pass with autocasting
+        with torch.amp.autocast('cuda'):
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+
+        # Backward pass with Scaler
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
+
         running_loss += loss.item() * images.size(0)
-        _, predicted = torch.max(outputs, 1)
+        _, predicted = torch.max(outputs.data, 1)
         total += labels.size(0)
         correct += (predicted == labels).sum().item()
 
         # Update progress bar
-        progress_bar.set_postfix(
-            loss=f"{loss.item():.4f}",
-            acc=f"{100 * correct / total:.1f}%",
-        )
+        acc = 100 * correct / total
+        progress_bar.set_postfix({"loss": f"{loss.item():.2f}", "acc": f"{acc:.1f}%"})
 
-    epoch_loss = running_loss / total
+    epoch_loss = running_loss / len(dataloader.dataset)
     epoch_acc = 100 * correct / total
     return epoch_loss, epoch_acc
 

@@ -132,39 +132,53 @@ async def predict_fruit(file: UploadFile = File(...)):
 
     # ── Step 1: PyTorch Prediction ────────────────────────────────────────
     try:
+        # Multi-crop prediction handles centered/uncentered fruits
         predictions = fruit_detector.predict(image_bytes, top_k=5)
-        top_prediction = predictions[0]
-        fruit_name = top_prediction["name"]
-        confidence = top_prediction["confidence"]
     except Exception as e:
         raise HTTPException(
             status_code=500,
             detail=f"Error during model prediction: {str(e)}",
         )
 
-    # ── Step 2: Gemini AI Description ─────────────────────────────────────
+    # ── Step 2: AI Refinement (The 'Master Judge') ────────────────────────
+    # If Gemini is available, use Vision to double-check the image
+    final_fruit_name = predictions[0]["name"]
+    confidence = predictions[0]["confidence"]
+    is_refined = False
+
+    if gemini_service is not None:
+        try:
+            # Use Gemini Vision to pick the winner or fix the error
+            final_fruit_name = await gemini_service.refine_prediction(
+                image_bytes, predictions
+            )
+            is_refined = True
+        except Exception as e:
+            print(f"[Warning] Gemini refinement failed: {e}")
+
+    # ── Step 3: Get Fruit Description ─────────────────────────────────────
     ai_description = None
     if gemini_service is not None:
         try:
-            ai_description = await gemini_service.generate_description(fruit_name)
+            ai_description = await gemini_service.generate_description(
+                final_fruit_name, use_retries=False
+            )
         except Exception as e:
             print(f"[Warning] Gemini description failed: {e}")
-            ai_description = {
-                "description": f"{fruit_name} is a nutritious fruit.",
-                "nutrition": "Currently unavailable.",
-                "health_benefits": ["A healthy and natural snack."],
-                "fun_fact": "Fruits are nature's candy!",
-            }
+            ai_description = gemini_service._get_fallback_data(final_fruit_name)
 
     # ── Build Response ────────────────────────────────────────────────────
     response = {
         "success": True,
         "prediction": {
-            "fruit_name": fruit_name,
-            "confidence": confidence,
-            "top_5": predictions,
+            "fruit_name": final_fruit_name,
+            "confidence": confidence if not is_refined else 100.0,
+            "is_refined": is_refined,
+            "pytorch_guesses": predictions,
         },
         "ai_description": ai_description,
     }
 
     return response
+
+

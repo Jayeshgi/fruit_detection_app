@@ -9,11 +9,17 @@ so the backend is self-contained.
 ──────────────────────────────────────────────────────────────────────────────
 """
 import os
+import sys
 import torch
 import torch.nn as nn
 from torchvision import models, transforms
+
+# Add model directory to path so we can import fruit_model
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "model"))
+
 from PIL import Image
 from io import BytesIO
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # ─── Constants (must match what was used during training) ─────────────────────
 IMAGE_SIZE = 224
@@ -30,7 +36,6 @@ MODEL_PATH = os.path.join(
 class FruitDetector:
     """
     Loads the trained PyTorch model once and provides a predict() method.
-    Designed to be initialized once when the FastAPI server starts.
     """
 
     def __init__(self, model_path: str = MODEL_PATH):
@@ -39,7 +44,8 @@ class FruitDetector:
         self.class_names = []
         self.num_classes = 0
 
-        # Image preprocessing — MUST match test transforms used during training
+        # BACK TO BASICS: Direct resize to 224x224. 
+        # For Fruits-360, this is often better as it preserves the whole fruit.
         self.transform = transforms.Compose([
             transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
             transforms.ToTensor(),
@@ -51,64 +57,79 @@ class FruitDetector:
     def _load_model(self, model_path: str):
         """Load the trained model checkpoint."""
         if not os.path.exists(model_path):
-            raise FileNotFoundError(
-                f"Trained model not found at: {model_path}\n"
-                f"Please run 'python train.py' in the model/ directory first."
-            )
+            raise FileNotFoundError(f"Model not found at: {model_path}")
 
-        print(f"[ModelService] Loading model from: {model_path}")
+        print(f"[ModelService] Loading model...")
         checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
 
         self.class_names = checkpoint["class_names"]
         self.num_classes = checkpoint["num_classes"]
 
-        # Recreate the model architecture
-        weights = models.MobileNet_V3_Small_Weights.IMAGENET1K_V1
-        self.model = models.mobilenet_v3_small(weights=weights)
-        in_features = self.model.classifier[3].in_features
-        self.model.classifier[3] = nn.Linear(in_features, self.num_classes)
+        # Recreate exact architecture using our fruit_model factory
+        from fruit_model import create_model
+        self.model = create_model(num_classes=self.num_classes, freeze_backbone=False)
 
-        # Load trained weights
+        # Load weights
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.model = self.model.to(self.device)
         self.model.eval()
-
-        print(f"[ModelService] Model loaded successfully!")
-        print(f"[ModelService]   Classes: {self.num_classes}")
-        print(f"[ModelService]   Device : {self.device}")
-        print(f"[ModelService]   Accuracy: {checkpoint.get('test_acc', 'N/A')}%")
+        print(f"[ModelService] Loaded {self.num_classes} classes on {self.device}")
 
     def predict(self, image_bytes: bytes, top_k: int = 5) -> list[dict]:
         """
-        Predict the fruit from raw image bytes.
-
-        Args:
-            image_bytes: Raw bytes of the uploaded image file.
-            top_k:       Number of top predictions to return.
-
-        Returns:
-            List of dicts: [{"name": "Apple", "confidence": 97.32}, ...]
+        Multi-Crop Inference: Looks at the image in 3 different ways 
+        and picks the one the model is most confident about.
         """
-        # Load image from bytes
-        image = Image.open(BytesIO(image_bytes)).convert("RGB")
+        try:
+            raw_image = Image.open(BytesIO(image_bytes)).convert("RGB")
+            
+            # Create 3 different ways to look at the image
+            crops = [
+                # 1. Full Image (squished)
+                transforms.Resize((IMAGE_SIZE, IMAGE_SIZE))(raw_image),
+                # 2. Center Crop (zoomed in)
+                transforms.Compose([transforms.Resize(256), transforms.CenterCrop(IMAGE_SIZE)])(raw_image),
+                # 3. Tight Center Crop (very zoomed)
+                transforms.Compose([transforms.Resize(300), transforms.CenterCrop(IMAGE_SIZE)])(raw_image)
+            ]
 
-        # Preprocess
-        tensor = self.transform(image).unsqueeze(0).to(self.device)
+            best_predictions = None
+            max_confidence = -1.0
 
-        # Run inference
-        with torch.no_grad():
-            outputs = self.model(tensor)
-            probabilities = torch.nn.functional.softmax(outputs, dim=1)
-            top_probs, top_indices = torch.topk(
-                probabilities, k=min(top_k, self.num_classes)
-            )
+            for crop in crops:
+                tensor = transforms.Compose([
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+                ])(crop).unsqueeze(0).to(self.device)
 
-        # Format results
-        predictions = []
-        for prob, idx in zip(top_probs[0], top_indices[0]):
-            predictions.append({
-                "name": self.class_names[idx.item()],
-                "confidence": round(prob.item() * 100, 2),
-            })
+                with torch.no_grad():
+                    outputs = self.model(tensor)
+                    probs = torch.nn.functional.softmax(outputs, dim=1)
+                    conf, idx = torch.max(probs, dim=1)
+                    
+                    # If this "view" of the fruit is more confident, keep it
+                    if conf.item() > max_confidence:
+                        max_confidence = conf.item()
+                        # Get Top K for this best view
+                        top_probs, top_indices = torch.topk(probs, k=min(top_k, self.num_classes))
+                        
+                        best_predictions = []
+                        for i in range(top_probs.size(1)):
+                            p = top_probs[0][i].item()
+                            name = self.class_names[top_indices[0][i].item()]
+                            import re
+                            clean = re.sub(r"\s*\d+\s*$", "", name).strip()
+                            best_predictions.append({"name": clean, "confidence": round(p * 100, 2)})
 
-        return predictions
+            # Logging
+            if best_predictions:
+                print(f"[Multi-Crop] Best: {best_predictions[0]['name']} ({best_predictions[0]['confidence']}%)")
+
+            return best_predictions
+
+        except Exception as e:
+            print(f"[Predict Error] {e}")
+            return [{"name": "Error", "confidence": 0.0}]
+
+
+
