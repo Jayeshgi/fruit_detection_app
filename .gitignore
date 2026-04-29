@@ -1,5 +1,6 @@
 # ─── Python ───────────────────────────────────────
 venv/
+venv312/
 __pycache__/
 *.pyc
 *.pyo
@@ -9,7 +10,7 @@ __pycache__/
 model/data/
 
 # ─── Trained Model ────────────────────────────────
-# model/saved_models/*.pth  (included for deployment, 14 MB is fine for Git)
+model/saved_models/
 
 # ─── Node.js ──────────────────────────────────────
 node_modules/

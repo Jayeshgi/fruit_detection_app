@@ -101,7 +101,6 @@ function App() {
             <span className="header__icon">🍎</span>
             <h1 className="header__title">FruitLens</h1>
           </div>
-          <span className="header__badge">AI Powered</span>
         </div>
       </header>
 
@@ -110,12 +109,12 @@ function App() {
         {/* Hero */}
         <section className="hero">
           <h2 className="hero__title">
-            Identify Any Fruit with{' '}
-            <span className="hero__title-accent">AI Intelligence</span>
+            Know Your Fruits{' '}
+            <span className="hero__title-accent">Instantly</span>
           </h2>
           <p className="hero__subtitle">
-            Upload a photo of any fruit and get instant identification,
-            nutritional insights, and health benefits powered by deep learning.
+            Snap or upload a fruit photo to instantly identify it and discover
+            its nutritional value, health benefits, and fun facts.
           </p>
         </section>
 
@@ -202,14 +201,20 @@ function App() {
                 <h3 className="prediction__name">
                   {cleanFruitName(result.prediction.fruit_name)}
                 </h3>
+                
+                {result.prediction.is_refined && (
+                  <div className="prediction__refined-badge" title="Verified by Gemini Vision for higher accuracy">
+                    ✨ AI Refined
+                  </div>
+                )}
+
                 <p className="prediction__confidence">
-                  Confidence:{' '}
-                  <span className="prediction__confidence-value">
-                    {result.prediction.confidence}%
-                  </span>
+                  {result.prediction.is_refined ? 'Confidence: Very High' : `Confidence: ${result.prediction.confidence}%`}
                 </p>
+
                 <div className="top-predictions">
-                  {result.prediction.top_5.map((pred, i) => (
+                  <p className="top-predictions__label">PyTorch Model Guesses:</p>
+                  {(result.prediction.pytorch_guesses || []).map((pred, i) => (
                     <div key={i} className="top-pred">
                       <span className="top-pred__rank">{i + 1}</span>
                       <span className="top-pred__name">
@@ -225,6 +230,7 @@ function App() {
                     </div>
                   ))}
                 </div>
+
               </div>
 
               {/* Description Card */}
@@ -290,14 +296,7 @@ function App() {
 
       {/* Footer */}
       <footer className="footer">
-        <p>Built with PyTorch, FastAPI, Gemini AI & React</p>
-        <div className="footer__tech">
-          <span>Deep Learning</span>
-          <span className="footer__dot" />
-          <span>Computer Vision</span>
-          <span className="footer__dot" />
-          <span>Generative AI</span>
-        </div>
+        <p>FruitLens &mdash; Identify fruits, discover nutrition</p>
       </footer>
     </div>
   )

@@ -241,14 +241,14 @@ class GeminiService:
         self.client = genai.Client(api_key=api_key)
         print("[GeminiService] Gemini API configured successfully!")
 
-    async def generate_description(self, fruit_name: str) -> dict:
+    async def generate_description(self, fruit_name: str, use_retries: bool = True) -> dict:
         """
         Generate a detailed description of the detected fruit using Gemini.
-        Retries automatically on rate limit errors.
-        Falls back to built-in data if Gemini is completely unavailable.
-
+        
         Args:
-            fruit_name: The name of the fruit predicted by the PyTorch model.
+            fruit_name:   The name of the fruit predicted by the PyTorch model.
+            use_retries:  If True, retry on rate limits (slower but more reliable).
+                          If False, try once and fallback instantly (faster response).
 
         Returns:
             dict with keys: description, nutrition, health_benefits, fun_fact
@@ -275,9 +275,11 @@ NUTRITION: <your nutrition info here>
 HEALTH_BENEFITS: <benefit 1> | <benefit 2> | <benefit 3>
 FUN_FACT: <your fun fact here>"""
 
-        # Try Gemini with retries
+        max_attempts = self.MAX_RETRIES if use_retries else 1
+
+        # Try Gemini
         last_error = None
-        for attempt in range(1, self.MAX_RETRIES + 1):
+        for attempt in range(1, max_attempts + 1):
             try:
                 response = self.client.models.generate_content(
                     model="gemini-2.0-flash",
@@ -293,10 +295,10 @@ FUN_FACT: <your fun fact here>"""
                 error_str = str(e)
                 # Check if it's a rate limit error (429)
                 if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
-                    if attempt < self.MAX_RETRIES:
+                    if use_retries and attempt < max_attempts:
                         wait_time = self.RETRY_DELAY * attempt
                         print(
-                            f"[GeminiService] Rate limited (attempt {attempt}/{self.MAX_RETRIES}). "
+                            f"[GeminiService] Rate limited (attempt {attempt}/{max_attempts}). "
                             f"Retrying in {wait_time}s..."
                         )
                         time.sleep(wait_time)
@@ -305,9 +307,52 @@ FUN_FACT: <your fun fact here>"""
                 print(f"[GeminiService] Error: {e}")
                 break
 
-        # All retries failed — use built-in fallback data
-        print(f"[GeminiService] Gemini unavailable after {self.MAX_RETRIES} attempts. Using fallback data.")
+        # All attempts failed — use built-in fallback data
+        print(f"[GeminiService] Gemini unavailable. Using fallback data.")
         return self._get_fallback_data(fruit_name)
+
+    async def refine_prediction(self, image_bytes: bytes, pytorch_predictions: list[dict]) -> str:
+        """
+        Uses Gemini Vision to look at the image and decide which fruit it actually is.
+        This fixes errors where the PyTorch model gets confused by backgrounds.
+        """
+        # Format the PyTorch guesses to help Gemini (it acts as a hint)
+        hints = ", ".join([p["name"] for p in pytorch_predictions])
+        
+        prompt = f"""You are a world-class expert in pomology (fruit science). 
+        
+        Our local AI model is confused and suggests these possibilities: {hints}.
+        
+        YOUR TASK: 
+        1. Ignore the hints if they are clearly wrong.
+        2. Look at the visual features (shape, stem, texture, color) to identify the fruit.
+        3. If it's an Apple, specifically identify which kind if possible, or just say 'Apple'.
+        4. Do NOT call an Apple a 'Pear' or vice versa.
+        
+        Respond with ONLY the name of the fruit (1-3 words max). No extra text."""
+
+        try:
+            # Send the raw image to Gemini Vision with temperature 0 for max accuracy
+            response = self.client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=[
+                    prompt,
+                    {"mime_type": "image/jpeg", "data": image_bytes}
+                ],
+                config={"temperature": 0.0}
+            )
+            
+            refined_name = response.text.strip()
+            # Remove any trailing punctuation or extra words
+            refined_name = re.sub(r"[.!?]$", "", refined_name)
+            
+            print(f"[GeminiVision] Refined '{pytorch_predictions[0]['name']}' -> '{refined_name}'")
+            return refined_name
+
+        except Exception as e:
+            print(f"[GeminiVision] Error during refinement: {e}")
+            # If vision fails, stick with the PyTorch top prediction
+            return pytorch_predictions[0]["name"]
 
     def _get_fallback_data(self, fruit_name: str) -> dict:
         """

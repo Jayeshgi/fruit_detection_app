@@ -14,18 +14,18 @@ CLASS_NAMES_FILE = os.path.join(MODEL_SAVE_PATH, "class_names.txt")
 
 # ─── Image Settings ───────────────────────────────────────────────────────────
 IMAGE_SIZE = 224          # MobileNetV3 expects 224x224
-BATCH_SIZE = 64
-NUM_WORKERS = 2           # DataLoader workers (set to 0 on Windows if issues)
+BATCH_SIZE = 128          # Lowered for stability on Laptop GPU
+NUM_WORKERS = 6           # Optimized for Windows
 
 # ─── Training Hyperparameters ─────────────────────────────────────────────────
 NUM_EPOCHS = 10
-LEARNING_RATE = 0.001
-WEIGHT_DECAY = 1e-4       # L2 regularization
+LEARNING_RATE = 0.0001      # Lower LR for fine-tuning
+WEIGHT_DECAY = 1e-4         # L2 regularization
 
 # ─── ImageNet Normalization (used by all torchvision pretrained models) ───────
 IMAGENET_MEAN = [0.485, 0.456, 0.406]
 IMAGENET_STD = [0.229, 0.224, 0.225]
 
 # ─── Model ────────────────────────────────────────────────────────────────────
-MODEL_NAME = "mobilenet_v3_small"   # Options: mobilenet_v3_small, mobilenet_v3_large, resnet18
-FREEZE_BACKBONE = True              # Freeze pretrained layers initially (faster training)
+MODEL_NAME = "resnet18"   # Options: mobilenet_v3_small, mobilenet_v3_large, resnet18
+FREEZE_BACKBONE = False             # Fine-tune ALL layers for higher accuracy
