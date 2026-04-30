@@ -35,23 +35,26 @@ def get_train_transforms():
     generalize better to real-world images (not just clean white-bg ones).
     """
     return transforms.Compose([
-    # 1. Randomly zoom and crop (simulates being far/near from the fruit)
-    transforms.RandomResizedCrop(IMAGE_SIZE, scale=(0.8, 1.0)),
+    # 1. Randomly zoom and crop (harder: 60-100% scale forces partial views)
+    transforms.RandomResizedCrop(IMAGE_SIZE, scale=(0.6, 1.0)),
     
     # 2. Random flips and rotations
     transforms.RandomHorizontalFlip(),
     transforms.RandomRotation(degrees=30),
     
-    # 3. Randomly change brightness, contrast, and color
-    transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),
+    # 3. Perspective distortion (simulates photos taken at angles)
+    transforms.RandomPerspective(distortion_scale=0.3, p=0.4),
     
-    # 4. Add a bit of blur (simulates a shaky hand)
+    # 4. Randomly change brightness, contrast, and color
+    transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.15),
+    
+    # 5. Add a bit of blur (simulates a shaky hand or low-res camera)
     transforms.GaussianBlur(kernel_size=(3, 3), sigma=(0.1, 2.0)),
     
-    # 5. Occasionally turn the image black and white (forces it to learn shapes)
-    transforms.RandomGrayscale(p=0.1),
+    # 6. Occasionally turn the image black and white (forces learning shapes)
+    transforms.RandomGrayscale(p=0.15),
     
-    # 6. Final conversion and normalization
+    # 7. Final conversion and normalization
     transforms.ToTensor(),
     transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)
 ])

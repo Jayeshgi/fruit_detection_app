@@ -23,7 +23,7 @@ from tqdm import tqdm
 
 from config import (
     NUM_EPOCHS, LEARNING_RATE, WEIGHT_DECAY,
-    MODEL_SAVE_PATH, CLASS_NAMES_FILE,
+    MODEL_SAVE_PATH, CLASS_NAMES_FILE, EARLY_STOP_PATIENCE, LABEL_SMOOTHING,
 )
 from dataset import get_dataloaders
 from fruit_model import create_model
@@ -114,7 +114,7 @@ def main():
     model = model.to(device)
 
     # ── Loss & Optimizer ──────────────────────────────────────────────────
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(label_smoothing=LABEL_SMOOTHING)
     optimizer = optim.Adam(
         filter(lambda p: p.requires_grad, model.parameters()),
         lr=LEARNING_RATE,
@@ -128,8 +128,11 @@ def main():
     # ── Training Loop ─────────────────────────────────────────────────────
     print(f"\n[3/4] Training for {NUM_EPOCHS} epochs...\n")
 
-    best_test_acc = 0.0
     os.makedirs(MODEL_SAVE_PATH, exist_ok=True)
+    save_path = os.path.join(MODEL_SAVE_PATH, "best_fruit_model.pth")
+    best_test_acc = 0.0
+    epochs_no_improve = 0        # Early Stopping counter
+
 
     for epoch in range(1, NUM_EPOCHS + 1):
         epoch_start = time.time()
@@ -158,6 +161,7 @@ def main():
         # Save best model
         if test_acc > best_test_acc:
             best_test_acc = test_acc
+            epochs_no_improve = 0    # Reset counter
             save_path = os.path.join(MODEL_SAVE_PATH, "best_fruit_model.pth")
             torch.save({
                 "epoch": epoch,
@@ -167,9 +171,13 @@ def main():
                 "num_classes": num_classes,
                 "class_names": class_names,
             }, save_path)
-            print(f"  * New best model saved! (Test Acc: {test_acc:.2f}%)\n")
+            print(f"  ✓ New best model saved! (Test Acc: {test_acc:.2f}%)\n")
         else:
-            print()
+            epochs_no_improve += 1
+            print(f"  No improvement ({epochs_no_improve}/{EARLY_STOP_PATIENCE})\n")
+            if epochs_no_improve >= EARLY_STOP_PATIENCE:
+                print(f"  [Early Stop] No improvement for {EARLY_STOP_PATIENCE} epochs. Stopping.")
+                break
 
     # ── Save Class Names ──────────────────────────────────────────────────
     with open(CLASS_NAMES_FILE, "w", encoding="utf-8") as f:
