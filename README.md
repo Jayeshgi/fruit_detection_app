@@ -10,7 +10,7 @@ fruit_detection_app/
 │   ├── config.py             # Hyperparameters & paths
 │   ├── dataset.py            # Data loading & augmentation
 │   ├── download_dataset.py   # Kaggle dataset downloader
-│   ├── fruit_model.py        # MobileNetV3 architecture
+│   ├── fruit_model.py        # ResNet18 architecture
 │   ├── train.py              # Training pipeline
 │   ├── predict.py            # CLI prediction script
 │   ├── requirements.txt      # Python dependencies
